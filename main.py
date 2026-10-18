@@ -5,7 +5,6 @@ from anthropic import Anthropic
 
 client = Anthropic()
 model = "claude-haiku-5-5"
-max_tokens=500
 turn_index=1
 
 # Start with an empty message list
@@ -19,12 +18,18 @@ def add_assistant_message(messages, text):
     assistant_message = {"role": "assistant", "content": text}
     messages.append(assistant_message)
 
-def chat(messages):
-    message = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        messages=messages,
-    )
+def chat(messages, system=None):
+    params = {
+        "model": model,
+        "max_tokens": 500,
+        "messages": messages,
+    }
+    
+    if system:
+        params["system"] = system
+
+    message = client.messages.create(**params)
+    
     global turn_index
     print(f"\n----------------START ({turn_index})-----------------\n")
     print(messages)
