@@ -6,36 +6,18 @@ from anthropic import Anthropic
 
 client = Anthropic()
 model = "claude-haiku-5-5"
-turn_index=1
-system_prompt = "You are a concise, sarcastic Linux terminal assistant. Answer in two sentences or less."
+turn_index = 1
 
-# Start with an empty message list
-messages = []
 
 def add_user_message(messages, text):
-    user_message = {"role": "user", "content": text}
-    messages.append(user_message)
+    messages.append({"role": "user", "content": text})
+
 
 def add_assistant_message(messages, text):
-    assistant_message = {"role": "assistant", "content": text}
-    messages.append(assistant_message)
+    messages.append({"role": "assistant", "content": text})
 
-def chat(messages, system=None, temperature=1.0, stop_sequences=[]):
-    params = {
-        "model": model,
-        "max_tokens": 500,
-        "messages": messages,
-        "extra_body": {"temperature": temperature}
-    }
-    
-    if system:
-        params["system"] = system
 
-    if stop_sequences:
-        params["stop_sequences"] = stop_sequences
-
-    message = client.messages.create(**params)
-    
+def log_turn(messages, message):
     global turn_index
     print(f"\n----------------START ({turn_index})-----------------\n")
     for msg in messages:
@@ -44,7 +26,28 @@ def chat(messages, system=None, temperature=1.0, stop_sequences=[]):
     print(message.to_json(indent=2))
     print(f"\n----------------END ({turn_index})-----------------\n")
     turn_index += 1
-    return message.content[0].text
+
+
+def chat(messages, system=None, temperature=1.0, stop_sequences=[]):
+    params = {
+        "model": model,
+        "max_tokens": 2000,
+        "messages": messages,
+        "extra_body": {"temperature": temperature}
+    }
+
+    if system:
+        params["system"] = system
+
+    if stop_sequences:
+        params["stop_sequences"] = stop_sequences
+
+    message = client.messages.create(**params)
+    log_turn(messages, message)
+
+    text_blocks = [block.text for block in message.content if block.type == "text"]
+    return "".join(text_blocks)
+
 
 def generate_dataset():
     prompt = """
@@ -71,33 +74,70 @@ Please generate 3 objects.
     add_user_message(messages, prompt)
     text = chat(messages)
 
-    # Strip markdown code fences if the model wraps the JSON in them anyway
+    return json.loads(strip_code_fence(text))
+
+
+def strip_code_fence(text):
+    """Strips a markdown code fence (e.g. ```json ... ```) if the model adds one"""
     text = text.strip()
     if text.startswith("```"):
-        text = text.split("```")[1]
-        text = text.removeprefix("json").strip()
+        text = text.split("```")[1].removeprefix("json").strip()
+    return text
 
-    return json.loads(text)
+
+def run_prompt(test_case):
+    """Merges the prompt and test case input, then returns the result"""
+    prompt = f"""
+Please solve the following task:
+
+{test_case["task"]}
+"""
+
+    messages = []
+    add_user_message(messages, prompt)
+    return chat(messages)
+
+
+def run_test_case(test_case):
+    """Calls run_prompt, then grades the result"""
+    output = run_prompt(test_case)
+
+    # TODO - Grading
+    score = 10
+
+    return {
+        "output": output,
+        "test_case": test_case,
+        "score": score
+    }
+
+
+def run_eval(dataset):
+    """Loads the dataset and calls run_test_case with each case"""
+    return [run_test_case(test_case) for test_case in dataset]
+
+
+def save_json(path, data):
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def load_json(path):
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+DATASET_INPUT_PATH = "dataset-input.json"
+DATASET_OUTPUT_PATH = "dataset-output.json"
 
 if __name__ == "__main__":
-    # # Add the initial user question
-    # add_user_message(messages, "How do I list files in a directory?")
-
-    # # Get Claude's response
-    # answer = chat(messages, system_prompt)
-
-    # # Add Claude's response to the conversation history
-    # add_assistant_message(messages, answer)
-
-    # # Add a follow-up question
-    # add_user_message(messages, "What about finding hidden files specifically?")
-
-    # # Get the follow-up response with full context
-    # final_answer = chat(messages, system_prompt)
-
-    # print("Response Text: ", final_answer)
-
     dataset = generate_dataset()
-    print(dataset)
-    with open('dataset.json', 'w') as f:
-        json.dump(dataset, f, indent=2)
+    save_json(DATASET_INPUT_PATH, dataset)
+
+    dataset = load_json(DATASET_INPUT_PATH)
+    results = run_eval(dataset)
+    save_json(DATASET_OUTPUT_PATH, results)
+
+    results = load_json(DATASET_OUTPUT_PATH)
+    for result in results:
+        print(result["output"], end="\n------------------------------\n")
