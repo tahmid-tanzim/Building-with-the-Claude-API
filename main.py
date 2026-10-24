@@ -1,3 +1,4 @@
+import json
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -19,7 +20,7 @@ def add_assistant_message(messages, text):
     assistant_message = {"role": "assistant", "content": text}
     messages.append(assistant_message)
 
-def chat(messages, system=None, temperature=1.0):
+def chat(messages, system=None, temperature=1.0, stop_sequences=[]):
     params = {
         "model": model,
         "max_tokens": 500,
@@ -29,6 +30,9 @@ def chat(messages, system=None, temperature=1.0):
     
     if system:
         params["system"] = system
+
+    if stop_sequences:
+        params["stop_sequences"] = stop_sequences
 
     message = client.messages.create(**params)
     
@@ -42,20 +46,58 @@ def chat(messages, system=None, temperature=1.0):
     turn_index += 1
     return message.content[0].text
 
+def generate_dataset():
+    prompt = """
+Generate an evaluation dataset for a prompt evaluation. The dataset will be used to evaluate prompts that generate Python, JSON, or Regex specifically for AWS-related tasks. Generate an array of JSON objects, each representing task that requires Python, JSON, or a Regex to complete.
 
-# Add the initial user question
-add_user_message(messages, "How do I list files in a directory?")
+Example output:
+```json
+[
+  \{
+    "task": "Description of task",
+  \},
+  ...additional
+]
+```
 
-# Get Claude's response
-answer = chat(messages, system_prompt)
+* Focus on tasks that can be solved by writing a single Python function, a single JSON object, or a single regex
+* Focus on tasks that do not require writing much code
+* Respond with ONLY the JSON array, no other text before or after it
 
-# Add Claude's response to the conversation history
-add_assistant_message(messages, answer)
+Please generate 3 objects.
+"""
 
-# Add a follow-up question
-add_user_message(messages, "What about finding hidden files specifically?")
+    messages = []
+    add_user_message(messages, prompt)
+    text = chat(messages)
 
-# Get the follow-up response with full context
-final_answer = chat(messages, system_prompt)
+    # Strip markdown code fences if the model wraps the JSON in them anyway
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        text = text.removeprefix("json").strip()
 
-print("Response Text: ", final_answer)
+    return json.loads(text)
+
+if __name__ == "__main__":
+    # # Add the initial user question
+    # add_user_message(messages, "How do I list files in a directory?")
+
+    # # Get Claude's response
+    # answer = chat(messages, system_prompt)
+
+    # # Add Claude's response to the conversation history
+    # add_assistant_message(messages, answer)
+
+    # # Add a follow-up question
+    # add_user_message(messages, "What about finding hidden files specifically?")
+
+    # # Get the follow-up response with full context
+    # final_answer = chat(messages, system_prompt)
+
+    # print("Response Text: ", final_answer)
+
+    dataset = generate_dataset()
+    print(dataset)
+    with open('dataset.json', 'w') as f:
+        json.dump(dataset, f, indent=2)
