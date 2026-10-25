@@ -1,11 +1,11 @@
 [
   {
-    "task": "Write a Python function that takes an S3 bucket name and returns the total number of objects stored in that bucket, using boto3 and handling pagination with a paginator."
+    "task": "Write a Python function using boto3 that takes an S3 bucket name and returns the total number of objects in the bucket, handling pagination so that buckets with more than 1,000 objects are counted correctly."
   },
   {
-    "task": "Create a JSON IAM policy document that allows read-only access (s3:GetObject and s3:ListBucket) to a single S3 bucket named 'my-app-logs' and denies all other actions on that bucket."
+    "task": "Create a JSON IAM policy document that allows read-only access (s3:GetObject and s3:ListBucket) to a single S3 bucket named 'analytics-reports' and denies all delete actions on that bucket."
   },
   {
-    "task": "Write a regex that matches valid AWS EC2 instance IDs (formatted as 'i-' followed by 8 or 17 lowercase hexadecimal characters) and captures the ID portion in a named group called 'instance_id'."
+    "task": "Write a regular expression that matches valid AWS EC2 instance IDs (for example, i-0abcd1234efgh5678 or i-1234567890abcdef0), which begin with 'i-' followed by either 8 or 17 hexadecimal characters."
   }
 ]

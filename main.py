@@ -19,12 +19,13 @@ def add_assistant_message(messages, text):
 
 def log_turn(messages, message):
     global turn_index
-    print(f"\n----------------START ({turn_index})-----------------\n")
+    print(f"\n==================== TURN {turn_index} START ====================\n")
+    print("--- Messages ---")
     for msg in messages:
         print(msg)
-    print("\n\n")
+    print("\n--- Response ---")
     print(message.to_json(indent=2))
-    print(f"\n----------------END ({turn_index})-----------------\n")
+    print(f"\n==================== TURN {turn_index} END ======================\n")
     turn_index += 1
 
 
@@ -56,9 +57,9 @@ Generate an evaluation dataset for a prompt evaluation. The dataset will be used
 Example output:
 ```json
 [
-  \{
+  {
     "task": "Description of task",
-  \},
+  },
   ...additional
 ]
 ```
@@ -160,5 +161,7 @@ if __name__ == "__main__":
     save_json(DATASET_OUTPUT_PATH, results)
 
     results = load_json(DATASET_OUTPUT_PATH)
-    for result in results:
-        print(result["output"], end="\n------------------------------\n")
+    for index, result in enumerate(results, start=1):
+        print(f"\n==================== RESULT {index} START ====================\n")
+        print(result["output"])
+        print(f"\n==================== RESULT {index} END ======================\n")
