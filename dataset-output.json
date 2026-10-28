@@ -1,23 +1,66 @@
 [
   {
-    "output": "Here's a function that uses boto3's paginator to count every object in a bucket. The paginator automatically follows `NextContinuationToken` across multiple `list_objects_v2` calls, so buckets with more than 1,000 objects are counted completely.\n\n```python\nimport boto3\nfrom botocore.exceptions import ClientError\n\n\ndef count_s3_objects(bucket_name: str, prefix: str = \"\") -> int:\n    \"\"\"\n    Return the total number of objects in an S3 bucket.\n\n    Pagination is handled automatically via boto3's paginator, which\n    issues repeated list_objects_v2 calls (up to 1,000 keys per page)\n    until every object has been counted.\n\n    Args:\n        bucket_name: Name of the S3 bucket.\n        prefix: Optional key prefix to restrict the count (default: whole bucket).\n\n    Returns:\n        The total number of objects in the bucket (or under the prefix).\n\n    Raises:\n        ClientError: If the bucket doesn't exist or access is denied.\n    \"\"\"\n    s3 = boto3.client(\"s3\")\n    paginator = s3.get_paginator(\"list_objects_v2\")\n\n    total = 0\n    try:\n        for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):\n            # 'KeyCount' is the number of keys returned in this page.\n            # Pages with no objects omit 'Contents', so use .get().\n            total += page.get(\"KeyCount\", 0)\n    except ClientError as e:\n        raise RuntimeError(f\"Failed to count objects in bucket '{bucket_name}': {e}\") from e\n\n    return total\n\n\nif __name__ == \"__main__\":\n    import sys\n\n    if len(sys.argv) < 2:\n        print(\"Usage: python count_s3_objects.py <bucket-name> [prefix]\")\n        sys.exit(1)\n\n    bucket = sys.argv[1]\n    key_prefix = sys.argv[2] if len(sys.argv) > 2 else \"\"\n    print(f\"Total objects in '{bucket}': {count_s3_objects(bucket, key_prefix)}\")\n```\n\n**Notes:**\n\n- **Pagination:** `list_objects_v2` returns at most 1,000 keys per call. The paginator loops through `NextContinuationToken` for you, so the count is accurate for any bucket size.\n- **Counting:** `KeyCount` in each page gives the number of keys in that page. Summing across pages gives the total. Alternatively, you could use `len(page.get(\"Contents\", []))`, which gives the same result.\n- **Permissions:** The IAM principal needs `s3:ListBucket` on the bucket.\n- **Credentials/region:** The function uses the default boto3 credential chain. Set `AWS_PROFILE` or `AWS_DEFAULT_REGION` as needed.\n- **Versioned buckets:** This counts current object keys only. To count all versions and delete markers, use `list_object_versions` with its own paginator.\n- **Cost/time:** Counting is a list operation, so very large buckets (millions of objects) will take time and incur LIST request charges. S3 Inventory or CloudWatch's `NumberOfObjects` metric (updated daily) are cheaper alternatives for approximate or large-scale counts.",
+    "output": "```python\nimport boto3\n\ndef is_versioning_enabled(bucket_name):\n    s3 = boto3.client(\"s3\")\n    response = s3.get_bucket_versioning(Bucket=bucket_name)\n    return response.get(\"Status\") == \"Enabled\"\n```",
     "test_case": {
-      "task": "Write a Python function using boto3 that takes an S3 bucket name and returns the total number of objects in the bucket, handling pagination so that buckets with more than 1,000 objects are counted correctly."
+      "task": "Write a Python function that takes an S3 bucket name and returns True if the bucket has versioning enabled, using boto3.",
+      "format": "python"
     },
-    "score": 10
+    "model_grade": {
+      "strengths": [
+        "Correctly uses the boto3 S3 `get_bucket_versioning` API and checks for the `\"Enabled\"` status, so it returns True only when versioning is actively on.",
+        "Handles the case where the `Status` key is absent (versioning never configured) by using `.get()`, which returns None and evaluates to False without raising a KeyError."
+      ],
+      "weaknesses": [
+        "No error handling: a nonexistent bucket (NoSuchBucket), missing permissions (AccessDenied), or invalid bucket names will raise botocore exceptions to the caller. The function should document this or catch and handle the errors explicitly.",
+        "Creates a new boto3 client on every call. Accepting an optional client parameter or reusing a module-level client would be more efficient and easier to test with mocks.",
+        "Lacks a docstring and type hints, and does not explain that 'Suspended' status returns False, which may matter to callers who need to distinguish 'never enabled' from 'suspended'."
+      ],
+      "reasoning": "The function is functionally correct for the stated task. get_bucket_versioning returns a Status of 'Enabled', 'Suspended', or omits the key entirely when versioning has never been configured. The equality check against 'Enabled' correctly returns True only in the first case. The main gaps are production-readiness concerns: there is no error handling for common failure modes like missing buckets or insufficient IAM permissions, the client is recreated on each invocation, and the code is undocumented. These are not bugs in the core logic but would matter in real use.",
+      "score": 7
+    },
+    "code_score": 10,
+    "score": 8.5
   },
   {
-    "output": "Here is an IAM policy document that grants read-only access to the `analytics-reports` bucket and explicitly denies all delete actions on it:\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"AllowReadOnlyAccessToAnalyticsReports\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"s3:GetObject\",\n        \"s3:ListBucket\"\n      ],\n      \"Resource\": [\n        \"arn:aws:s3:::analytics-reports\",\n        \"arn:aws:s3:::analytics-reports/*\"\n      ]\n    },\n    {\n      \"Sid\": \"DenyDeleteActionsOnAnalyticsReports\",\n      \"Effect\": \"Deny\",\n      \"Action\": [\n        \"s3:DeleteObject\",\n        \"s3:DeleteObjectVersion\",\n        \"s3:DeleteBucket\",\n        \"s3:DeleteObjectTagging\",\n        \"s3:DeleteObjectVersionTagging\",\n        \"s3:DeleteBucketPolicy\",\n        \"s3:DeleteBucketWebsite\",\n        \"s3:DeleteBucketTagging\",\n        \"s3:DeleteBucketOwnershipControls\",\n        \"s3:DeleteBucketPublicAccessBlock\",\n        \"s3:DeleteLifecycleConfiguration\",\n        \"s3:DeleteReplicationConfiguration\",\n        \"s3:DeleteBucketCors\",\n        \"s3:DeleteBucketEncryption\",\n        \"s3:DeleteBucketLifecycle\",\n        \"s3:DeleteBucketMetricsConfiguration\",\n        \"s3:DeleteBucketAnalyticsConfiguration\",\n        \"s3:DeleteBucketIntelligentTieringConfiguration\",\n        \"s3:DeleteBucketInventoryConfiguration\",\n        \"s3:DeleteBucketLogging\",\n        \"s3:DeleteMultiRegionAccessPoint\"\n      ],\n      \"Resource\": [\n        \"arn:aws:s3:::analytics-reports\",\n        \"arn:aws:s3:::analytics-reports/*\"\n      ]\n    }\n  ]\n}\n```\n\n**Notes:**\n\n- **Resource scoping:** `s3:ListBucket` applies to the bucket ARN (`arn:aws:s3:::analytics-reports`), while `s3:GetObject` applies to object ARNs (`arn:aws:s3:::analytics-reports/*`). Both are included so the policy works correctly.\n- **Explicit deny:** An explicit `Deny` overrides any `Allow` granted elsewhere (for example, by another attached policy), so delete actions remain blocked even if the principal has broader permissions.\n- **Delete actions covered:** The deny list includes object-level deletes (`DeleteObject`, `DeleteObjectVersion`) and bucket-level deletes and configuration removals. Note that `s3:DeleteBucket` and the other bucket-configuration deletes are included to satisfy \"all delete actions\" on the bucket.\n- **Scope of the policy:** This document only grants and denies permissions; it must be attached to a user, group, or role to take effect. Since no principal is specified, it works as an identity-based policy. If you need a resource-based bucket policy instead, add a `Principal` element to each statement.",
+    "output": "```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"AllowListBucket\",\n      \"Effect\": \"Allow\",\n      \"Action\": \"s3:ListBucket\",\n      \"Resource\": \"arn:aws:s3:::example-logs\"\n    },\n    {\n      \"Sid\": \"AllowGetObject\",\n      \"Effect\": \"Allow\",\n      \"Action\": \"s3:GetObject\",\n      \"Resource\": \"arn:aws:s3:::example-logs/*\"\n    }\n  ]\n}\n```",
     "test_case": {
-      "task": "Create a JSON IAM policy document that allows read-only access (s3:GetObject and s3:ListBucket) to a single S3 bucket named 'analytics-reports' and denies all delete actions on that bucket."
+      "task": "Write a JSON IAM policy that allows read-only access (s3:GetObject and s3:ListBucket) to the bucket 'example-logs' and nothing else.",
+      "format": "json"
     },
-    "score": 10
+    "model_grade": {
+      "strengths": [
+        "Grants exactly the two requested actions, s3:ListBucket and s3:GetObject, with no wildcards in the Action field, which satisfies least privilege and the 'nothing else' requirement.",
+        "Resource ARNs are correct: s3:ListBucket targets the bucket ARN (arn:aws:s3:::example-logs) and s3:GetObject targets the object path (arn:aws:s3:::example-logs/*), matching how S3 evaluates these actions."
+      ],
+      "weaknesses": [
+        "If the bucket uses SSE-KMS encryption, reading objects also requires kms:Decrypt permission, which is not included. This is outside the stated scope, but the reviewer may want a note about it.",
+        "The policy has no Condition block (for example, to enforce aws:SecureTransport), so it is less hardened than a production policy might be. This is optional given the task wording."
+      ],
+      "reasoning": "The policy is valid IAM JSON with the correct Version and a well-formed Statement array. Each statement uses the correct resource type for its action: ListBucket applies to the bucket ARN and GetObject to the object ARN pattern. It grants no write, delete, or administrative permissions, so it meets the read-only, single-bucket requirement. The main gaps are environment-dependent (KMS) and optional hardening (conditions), not errors in the solution as specified.",
+      "score": 9
+    },
+    "code_score": 10,
+    "score": 9.5
   },
   {
-    "output": "Here's a regular expression that matches an AWS EC2 instance ID: `i-` followed by exactly 8 or 17 hexadecimal characters.\n\n```regex\n^i-([0-9a-f]{8}|[0-9a-f]{17})$\n```\n\n**Explanation:**\n- `^` and `$` anchor the match to the whole string, so IDs with extra text are rejected.\n- `i-` matches the literal prefix.\n- `[0-9a-f]` matches a lowercase hexadecimal digit.\n- `{8}` or `{17}` specifies the required length. The `|` alternation allows either the older 8-character format or the newer 17-character format.\n\n**Notes:**\n- Your example `i-0abcd1234efgh5678` contains `g` and `h`, which are not hexadecimal, so it would not match. The valid form would be something like `i-0abcd1234ef567890`.\n- If you need to accept uppercase hex characters as well, use `[0-9a-fA-F]` in place of `[0-9a-f]`. AWS IDs are normally lowercase.",
+    "output": "^i-([0-9a-f]{8}|[0-9a-f]{17})$",
     "test_case": {
-      "task": "Write a regular expression that matches valid AWS EC2 instance IDs (for example, i-0abcd1234efgh5678 or i-1234567890abcdef0), which begin with 'i-' followed by either 8 or 17 hexadecimal characters."
+      "task": "Write a regex that matches valid AWS EC2 instance IDs (for example, i-0abcd1234efgh5678), which start with 'i-' followed by 8 or 17 lowercase hexadecimal characters.",
+      "format": "regex"
     },
-    "score": 10
+    "model_grade": {
+      "strengths": [
+        "Correctly encodes both valid AWS EC2 instance ID lengths (8 and 17 hex characters) with an alternation, matching the specification exactly.",
+        "Uses both ^ and $ anchors, so partial matches inside longer strings are rejected."
+      ],
+      "weaknesses": [
+        "In some engines (e.g., Python's re.match or Perl/PCRE without fullmatch), $ can match before a trailing newline, so 'i-12345678\\n' could pass. Using \\z, \\Z, or fullmatch would be stricter.",
+        "The task's example ID 'i-0abcd1234efgh5678' contains non-hex letters 'g' and 'h', so it would correctly fail this regex. The task text is inconsistent with its own spec, and the solution does not note this."
+      ],
+      "reasoning": "The regex satisfies the stated requirements: the literal 'i-' prefix, followed by exactly 8 or 17 lowercase hexadecimal characters, with anchored matching. The alternation is clear and concise. The main limitations are a minor anchor-semantics issue that depends on the regex flavor and the lack of any note about the inconsistent example, which the solution correctly rejects. These are small issues, so the solution is strong overall.",
+      "score": 9
+    },
+    "code_score": 10,
+    "score": 9.5
   }
 ]
