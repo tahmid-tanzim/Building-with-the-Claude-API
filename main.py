@@ -1,4 +1,6 @@
 import json
+import ast
+import re
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -127,6 +129,27 @@ def load_json(path):
     with open(path, "r") as f:
         return json.load(f)
 
+def validate_json(text):
+    try:
+        json.loads(text.strip())
+        return 10
+    except json.JSONDecodeError:
+        return 0
+
+def validate_python(text):
+    try:
+        ast.parse(text.strip())
+        return 10
+    except SyntaxError:
+        return 0
+
+def validate_regex(text):
+    try:
+        re.compile(text.strip())
+        return 10
+    except re.error:
+        return 0
+
 def grade_by_model(test_case, output):
     # Create evaluation prompt
     eval_prompt = """
@@ -149,6 +172,34 @@ def grade_by_model(test_case, output):
     eval_text = chat(messages, stop_sequences=["```"])
     return json.loads(eval_text)
 
+def code_based_grading(results):
+    for result in results:
+        match_python = re.search(r"```python\s*(.*?)\s*```", result["output"], flags=re.DOTALL)
+        match_regex = re.search(r"```regex\s*(.*?)\s*```", result["output"], flags=re.DOTALL)
+        match_json = re.search(r"```json\s*(.*?)\s*```", result["output"], flags=re.DOTALL)
+
+        if match_python:
+            python_str = match_python.group(1)
+            score = validate_python(python_str)
+            print(repr(python_str), score)
+            result["code_type"] = "python"
+            result["score"] = score
+         
+        if match_json:
+            json_str = match_json.group(1)
+            score = validate_json(json_str)
+            print(repr(json_str), score)
+            result["code_type"] = "json"
+            result["score"] = score
+
+        if match_regex:
+            regex_str = match_regex.group(1)
+            score = validate_regex(regex_str)
+            print(repr(regex_str), score)
+            result["code_type"] = "regex"
+            result["score"] = score
+
+
 DATASET_INPUT_PATH = "dataset-input.json"
 DATASET_OUTPUT_PATH = "dataset-output.json"
 
@@ -161,7 +212,8 @@ if __name__ == "__main__":
     save_json(DATASET_OUTPUT_PATH, results)
 
     results = load_json(DATASET_OUTPUT_PATH)
+    code_based_grading(results)
     for index, result in enumerate(results, start=1):
         print(f"\n==================== RESULT {index} START ====================\n")
-        print(result["output"])
+        print(result["output"], result["score"], result.get("code_type", "unknown"))
         print(f"\n==================== RESULT {index} END ======================\n")
