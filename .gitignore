@@ -1,2 +1,4 @@
 .env
 .venv
+user_profile.json
+__pycache__/
